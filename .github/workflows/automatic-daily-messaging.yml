@@ -23,7 +23,7 @@ jobs:
     steps:
       # Download the repository.
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       # Read the current day number.
       # If day.txt doesn't exist, start at Day 2.
@@ -35,7 +35,7 @@ jobs:
 
           # Make sure DAY contains only a number.
           if ! [[ "$DAY" =~ ^[0-9]+$ ]]; then
-            echo "Error: day.txt does not contain a valid number."
+            echo "Error: day.txt does not contain a valid number." >&2
             exit 1
           fi
 
@@ -50,6 +50,11 @@ jobs:
           DAY: ${{ steps.day.outputs.day }}
         shell: bash
         run: |
+          if [[ -z "${WEBHOOK_URL:-}" ]]; then
+            echo "Error: DISCORD_WEBHOOK_URL secret is not set." >&2
+            exit 1
+          fi
+
           PAYLOAD=$(python3 - <<'PY'
           import json
           import os
@@ -82,6 +87,11 @@ jobs:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         shell: bash
         run: |
+          if [[ -z "${WEBHOOK_URL:-}" ]]; then
+            echo "Error: DISCORD_WEBHOOK_URL secret is not set." >&2
+            exit 1
+          fi
+
           curl \
             --fail \
             --silent \
@@ -95,6 +105,7 @@ jobs:
 
       # Increase the counter by 1.
       - name: Increment day number
+        shell: bash
         run: |
           DAY=$(cat day.txt 2>/dev/null || echo 2)
           NEXT_DAY=$((DAY + 1))
@@ -120,4 +131,4 @@ jobs:
 
           git commit -m "Update daily crying emoji counter"
 
-          git push
+          git push origin HEAD
