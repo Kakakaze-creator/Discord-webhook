@@ -7,7 +7,12 @@ on:
 
   workflow_dispatch:
 
-# Allow the workflow to update day.txt
+# Only one copy of this workflow may update the counter at a time.
+concurrency:
+  group: daily-discord-counter
+  cancel-in-progress: false
+
+# The workflow needs permission to update day.txt.
 permissions:
   contents: write
 
@@ -16,53 +21,103 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Download the repository so we can read and update day.txt
+      # Download the repository.
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
-      # Read the current day number
+      # Read the current day number.
+      # If day.txt doesn't exist, start at Day 2.
       - name: Read day number
         id: day
+        shell: bash
         run: |
-          DAY=$(cat day.txt)
-          echo "day=$DAY" >> "$GITHUB_OUTPUT"
+          DAY=$(cat day.txt 2>/dev/null || echo 2)
 
-      # Send the first Discord message
+          # Make sure DAY contains only a number.
+          if ! [[ "$DAY" =~ ^[0-9]+$ ]]; then
+            echo "Error: day.txt does not contain a valid number."
+            exit 1
+          fi
+
+          echo "day=$DAY" >> "$GITHUB_OUTPUT"
+          echo "Current day: $DAY"
+
+      # Send:
+      # Day X of sending a crying emoji till @hihijsonel comes back
       - name: Send day message
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DAY: ${{ steps.day.outputs.day }}
+        shell: bash
         run: |
+          PAYLOAD=$(python3 - <<'PY'
+          import json
+          import os
+
+          day = os.environ["DAY"]
+
+          print(json.dumps({
+              "content": (
+                  f"Day {day} of sending a crying emoji till "
+                  f"<@763450243693674517> comes back"
+              )
+          }))
+          PY
+          )
+
           curl \
+            --fail \
+            --silent \
+            --show-error \
             -H "Content-Type: application/json" \
             -X POST \
-            -d "{\"content\":\"Day $DAY of sending a crying emoji till <@763450243693674517> comes back\"}" \
+            --data "$PAYLOAD" \
             "$WEBHOOK_URL"
 
-      # Send the crying emoji as a separate Discord message
+          echo "Day message sent successfully."
+
+      # Send 😭 as a completely separate Discord message.
       - name: Send crying emoji
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        shell: bash
         run: |
           curl \
+            --fail \
+            --silent \
+            --show-error \
             -H "Content-Type: application/json" \
             -X POST \
-            -d '{"content":"😭"}' \
+            --data '{"content":"😭"}' \
             "$WEBHOOK_URL"
 
-      # Increase the day number by 1
+          echo "Crying emoji sent successfully."
+
+      # Increase the counter by 1.
       - name: Increment day number
         run: |
-          DAY=$(cat day.txt)
+          DAY=$(cat day.txt 2>/dev/null || echo 2)
           NEXT_DAY=$((DAY + 1))
+
           echo "$NEXT_DAY" > day.txt
 
-      # Save the new number back to GitHub
+          echo "Next day will be: $NEXT_DAY"
+
+      # Commit and push the updated counter.
       - name: Save new day number
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # Only commit if day.txt actually changed.
+          if git diff --quiet -- day.txt; then
+            echo "No changes to day.txt. Nothing to commit."
+            exit 0
+          fi
+
           git add day.txt
-          git commit -m "Update daily crying emoji counter" || exit 0
+
+          git commit -m "Update daily crying emoji counter"
+
           git push
