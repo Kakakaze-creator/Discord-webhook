@@ -7,12 +7,12 @@ on:
 
   workflow_dispatch:
 
-# Only one copy of this workflow may update the counter at a time.
+# Prevent two copies from modifying day.txt simultaneously.
 concurrency:
   group: daily-discord-counter
   cancel-in-progress: false
 
-# The workflow needs permission to update day.txt.
+# Required so GitHub Actions can commit the updated counter.
 permissions:
   contents: write
 
@@ -23,7 +23,7 @@ jobs:
     steps:
       # Download the repository.
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Read the current day number.
       # If day.txt doesn't exist, start at Day 2.
@@ -42,8 +42,7 @@ jobs:
           echo "day=$DAY" >> "$GITHUB_OUTPUT"
           echo "Current day: $DAY"
 
-      # Send:
-      # Day X of sending a crying emoji till @hihijsonel comes back
+      # Send the Day X message.
       - name: Send day message
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -65,7 +64,10 @@ jobs:
               "content": (
                   f"Day {day} of sending a crying emoji till "
                   f"<@763450243693674517> comes back"
-              )
+              ),
+              "allowed_mentions": {
+                  "parse": ["users"]
+              }
           }))
           PY
           )
@@ -81,7 +83,7 @@ jobs:
 
           echo "Day message sent successfully."
 
-      # Send 😭 as a completely separate Discord message.
+      # Send 😭 as a separate message.
       - name: Send crying emoji
         env:
           WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -103,7 +105,7 @@ jobs:
 
           echo "Crying emoji sent successfully."
 
-      # Increase the counter by 1.
+      # Only advance the counter if both messages succeeded.
       - name: Increment day number
         shell: bash
         run: |
@@ -128,7 +130,6 @@ jobs:
           fi
 
           git add day.txt
-
           git commit -m "Update daily crying emoji counter"
 
           git push origin HEAD
